@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ZizgoKereso")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5c963cdab20e8cd8708b25a0ad535c8387c2e1e1")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+12ae19a5f080ff2f5a11b6df319cc2fcfb1b5d58")]
 [assembly: System.Reflection.AssemblyProductAttribute("ZizgoKereso")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ZizgoKereso")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

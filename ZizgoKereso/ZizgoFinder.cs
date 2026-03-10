@@ -16,8 +16,10 @@ namespace ZizgoKereso
         public double Score { get; set; }
         public double Scale { get; set; }
         public Rectangle BoundingBox { get; set; }
-        public string BestTemplatePath { get; set; } // Megjegyzi, melyik kép nyert
-        public string CroppedImagePath { get; set; } // A kivágott eredmény helye
+        public Point[] FencePoints { get; set; }
+        public Color TargetColor { get; set; }
+        public string BestTemplatePath { get; set; }
+        public string CroppedImagePath { get; set; }
     }
 
     public class TemplateLogEntry
@@ -110,9 +112,10 @@ namespace ZizgoKereso
                                 {
                                     globalBestMatch.Score = localResult.Score;
                                     globalBestMatch.Location = localResult.Location;
-                                    globalBestMatch.BoundingBox = new Rectangle(localResult.Location.X, localResult.Location.Y, scaledTemplate.Width, scaledTemplate.Height);
+                                    globalBestMatch.BoundingBox = localResult.BoundingBox;
+                                    globalBestMatch.FencePoints = localResult.FencePoints;
                                     globalBestMatch.Scale = bestForThisTemplate.Scale;
-                                    globalBestMatch.BestTemplatePath = templatePath; // Megjegyezzük a nyertest!
+                                    globalBestMatch.BestTemplatePath = templatePath;
                                 }
                             }
                         }
@@ -139,9 +142,13 @@ namespace ZizgoKereso
 
             if (globalBestMatch.Score != double.MaxValue)
             {
+                // 1. Csak egy mentést hívunk, ami a DrawZizgoFence-t használja
                 SaveResultImage(processedSearchImage, globalBestMatch, runId);
-                globalBestMatch.CroppedImagePath = SaveCroppedResult(processedSearchImage, globalBestMatch.BoundingBox, runId);
 
+                // 2. Maszkolt kivágás PNG-be (ez már a FencePoints-ot használja)
+                globalBestMatch.CroppedImagePath = SaveCroppedResult(processedSearchImage, globalBestMatch, runId);
+
+                // 3. Sablonok mentése változatlan...
                 if (!string.IsNullOrEmpty(globalBestMatch.BestTemplatePath))
                 {
                     string winnerName = Path.GetFileName(globalBestMatch.BestTemplatePath);
@@ -170,23 +177,43 @@ namespace ZizgoKereso
             return globalBestMatch;
         }
 
-        private static string SaveCroppedResult(Bitmap sourceImage, Rectangle bbox, string runId)
+        private static string SaveCroppedResult(Bitmap sourceImage, MatchResult match, string runId)
         {
-            int x = Math.Max(0, bbox.X);
-            int y = Math.Max(0, bbox.Y);
-            int width = Math.Min(sourceImage.Width - x, bbox.Width);
-            int height = Math.Min(sourceImage.Height - y, bbox.Height);
+            // 1. Ellenőrzés: Vannak-e egyáltalán pontok?
+            if (match.FencePoints == null || match.FencePoints.Length < 3)
+                return "";
 
-            Rectangle cropRect = new Rectangle(x, y, width, height);
-            string path = Path.Combine(currentOutputDirectory, $"5_Kivagott_Talalat_{runId}.jpg");
+            // 2. Szélsőértékek meghatározása
+            int minX = match.FencePoints.Min(p => p.X);
+            int minY = match.FencePoints.Min(p => p.Y);
+            int maxX = match.FencePoints.Max(p => p.X);
+            int maxY = match.FencePoints.Max(p => p.Y);
 
-            using (Bitmap target = new Bitmap(cropRect.Width, cropRect.Height))
+            // 3. Biztonsági korrekció: A szélesség és magasság legalább 1x1 legyen
+            int width = Math.Max(1, maxX - minX);
+            int height = Math.Max(1, maxY - minY);
+
+            Rectangle cropRect = new Rectangle(minX, minY, width, height);
+
+            string path = Path.Combine(currentOutputDirectory, $"5_Kivagott_Zizgo_{runId}.png");
+
+            // Most már biztosan érvényes számokkal hívjuk meg a Bitmap-et
+            using (Bitmap target = new Bitmap(cropRect.Width, cropRect.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
             {
                 using (Graphics g = Graphics.FromImage(target))
                 {
+                    g.Clear(Color.Transparent);
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                    GraphicsPath pathShape = new GraphicsPath();
+                    // Eltoljuk a pontokat, hogy a kivágott kép bal felső sarkához képest relatívak legyenek
+                    Point[] offsetPoints = match.FencePoints.Select(p => new Point(p.X - minX, p.Y - minY)).ToArray();
+                    pathShape.AddPolygon(offsetPoints);
+
+                    g.SetClip(pathShape);
                     g.DrawImage(sourceImage, new Rectangle(0, 0, target.Width, target.Height), cropRect, GraphicsUnit.Pixel);
                 }
-                target.Save(path, System.Drawing.Imaging.ImageFormat.Jpeg);
+                target.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             }
             return path;
         }
@@ -219,13 +246,18 @@ namespace ZizgoKereso
             }
         }
 
+        // ZizgoFinder.cs -> módosítsd a SaveResultImage metódust:
         private static void SaveResultImage(Bitmap processedImage, MatchResult bestMatch, string runId)
         {
             string imagePath = Path.Combine(currentOutputDirectory, $"4_Vegeleges_Eredmeny_{runId}.jpg");
-            Bitmap finalImage = DrawBoundingBox(processedImage, bestMatch);
+
+            // Most már a többpontos kerítést rajzoljuk fel!
+            Bitmap finalImage = DrawZizgoFence(processedImage, bestMatch);
+
             finalImage.Save(imagePath, System.Drawing.Imaging.ImageFormat.Jpeg);
             finalImage.Dispose();
         }
+        
 
         public static Bitmap DrawBoundingBox(Bitmap image, MatchResult match)
         {
@@ -234,6 +266,30 @@ namespace ZizgoKereso
             {
                 Pen pen = new Pen(Color.LimeGreen, 5);
                 g.DrawRectangle(pen, match.BoundingBox);
+            }
+            return resultImage;
+        }
+        public static Bitmap DrawZizgoFence(Bitmap image, MatchResult match)
+        {
+            Bitmap resultImage = (Bitmap)image.Clone();
+            if (match.FencePoints == null || match.FencePoints.Length < 3) return resultImage;
+
+            using (Graphics g = Graphics.FromImage(resultImage))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                // Vastag, világító zöld "kerítés"
+                using (Pen pen = new Pen(Color.LimeGreen, 4))
+                {
+                    pen.DashStyle = DashStyle.Solid;
+                    g.DrawPolygon(pen, match.FencePoints);
+                }
+
+                // Opcionális: a sarokpontok megjelölése
+                foreach (var pt in match.FencePoints)
+                {
+                    g.FillEllipse(Brushes.Yellow, pt.X - 2, pt.Y - 2, 4, 4);
+                }
             }
             return resultImage;
         }

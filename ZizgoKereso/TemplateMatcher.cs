@@ -45,17 +45,21 @@ namespace ZizgoKereso
             {
                 fastTemplate.Lock();
 
-                // 1. Sablon pixelek kigyűjtése (Csak a karakter színes részeit nézzük)
+                // 1. Sablon elemzése: Pixelek kigyűjtése és ÁTLAGOS SZÍN számítása
                 List<TemplatePixelOffset> validPixelsList = new List<TemplatePixelOffset>();
+                long sumR = 0, sumG = 0, sumB = 0;
+
                 for (int ty = 0; ty < fastTemplate.Height; ty += 2)
                 {
                     for (int tx = 0; tx < fastTemplate.Width; tx += 2)
                     {
                         byte* tP = fastTemplate.GetPixelPointer(tx, ty);
-                        int max = Math.Max(tP[2], Math.Max(tP[1], tP[0]));
-                        int min = Math.Min(tP[2], Math.Min(tP[1], tP[0]));
 
-                        if (max - min > 15)
+                        // Csak a színes (nem szürke/fekete) részeket vesszük a cél-szín meghatározásához
+                        int tMax = Math.Max(tP[2], Math.Max(tP[1], tP[0]));
+                        int tMin = Math.Min(tP[2], Math.Min(tP[1], tP[0]));
+
+                        if (tMax - tMin > 15)
                         {
                             validPixelsList.Add(new TemplatePixelOffset
                             {
@@ -64,14 +68,23 @@ namespace ZizgoKereso
                                 G = tP[1],
                                 R = tP[2]
                             });
+                            sumB += tP[0]; sumG += tP[1]; sumR += tP[2];
                         }
                     }
                 }
 
                 if (validPixelsList.Count < 10) { fastTemplate.Unlock(); return bestMatch; }
+
+                // Dinamikus cél-szín rögzítése a sablon alapján (Zizgő aktuális árnyalata)
+                bestMatch.TargetColor = Color.FromArgb(
+                    (int)(sumR / validPixelsList.Count),
+                    (int)(sumG / validPixelsList.Count),
+                    (int)(sumB / validPixelsList.Count)
+                );
+
                 TemplatePixelOffset[] tPixels = validPixelsList.ToArray();
 
-                // --- 2. DURVA KERESÉS (Nagy léptekkel a sebességért) ---
+                // --- 2. DURVA KERESÉS (Szín-büntetéssel a kanapé ellen) ---
                 int step = 6;
                 double bestTotalError = double.MaxValue;
 
@@ -79,7 +92,26 @@ namespace ZizgoKereso
                 {
                     for (int x = 0; x <= fastSearch.Width - fastTemplate.Width; x += step)
                     {
-                        double currentError = CalculateError(fastSearch, x, y, tPixels, bestTotalError);
+                        // Alap SSD hiba kiszámítása
+                        double currentError = CalculateError(fastSearch, x, y, tPixels, double.MaxValue);
+
+                        // KANAPÉ ELLENI VÉDELEM: 
+                        // Megnézzük a vizsgált ablak közepét. Ha a színe nagyon eltér Zizgőétől, 
+                        // és nem is semleges (szem/száj), akkor drasztikusan büntetjük a pontszámot.
+                        byte* pMid = fastSearch.GetPixelPointer(x + fastTemplate.Width / 2, y + fastTemplate.Height / 2);
+                        int dR = pMid[2] - bestMatch.TargetColor.R;
+                        int dG = pMid[1] - bestMatch.TargetColor.G;
+                        int dB = pMid[0] - bestMatch.TargetColor.B;
+                        double colorDist = Math.Sqrt(dR * dR + dG * dG + dB * dB);
+
+                        int midSat = Math.Max(pMid[2], Math.Max(pMid[1], pMid[0])) - Math.Min(pMid[2], Math.Min(pMid[1], pMid[0]));
+
+                        // Ha rossz a szín ÉS nem szem/száj (van telítettsége), akkor büntetünk
+                        if (colorDist > 65 && midSat > 20)
+                        {
+                            currentError *= 10.0;
+                        }
+
                         if (currentError < bestTotalError)
                         {
                             bestTotalError = currentError;
@@ -88,10 +120,9 @@ namespace ZizgoKereso
                     }
                 }
 
-                // --- 3. FINOMÍTÁS ÉS KERET TÁGÍTÁSA ---
+                // --- 3. FINOMÍTÁS ---
                 if (bestTotalError != double.MaxValue)
                 {
-                    // Precíz hely meghatározás a durva találat körül
                     int startX = Math.Max(0, bestMatch.Location.X - 8);
                     int startY = Math.Max(0, bestMatch.Location.Y - 8);
                     int endX = Math.Min(fastSearch.Width - fastTemplate.Width, bestMatch.Location.X + 8);
@@ -112,76 +143,98 @@ namespace ZizgoKereso
 
                     bestMatch.Score = bestTotalError / tPixels.Length;
 
-                    // --- DINAMIKUS TÁGÍTÁS ---
-                    // Meghatározzuk a kezdő határokat a sablon alapján
+                    // --- 4. DINAMIKUS TÁGÍTÁS ---
                     int finalLeft = bestMatch.Location.X;
                     int finalTop = bestMatch.Location.Y;
                     int finalRight = finalLeft + fastTemplate.Width;
                     int finalBottom = finalTop + fastTemplate.Height;
 
+                    int maxWidth = (int)(fastTemplate.Width * 2.5);
+                    int maxHeight = (int)(fastTemplate.Height * 2.5);
                     bool changed = true;
-                    while (changed)
+                    int iter = 0;
+
+                    while (changed && iter++ < 1000)
                     {
                         changed = false;
-
-                        // Balra tágítás: ha a bal szélen még van "Zizgő-szín"
-                        if (finalLeft > 0 && IsEdgeRelevant(fastSearch, finalLeft - 1, finalTop, finalBottom, true))
-                        {
-                            finalLeft--;
-                            changed = true;
-                        }
-                        // Jobbra tágítás
-                        if (finalRight < fastSearch.Width - 1 && IsEdgeRelevant(fastSearch, finalRight + 1, finalTop, finalBottom, true))
-                        {
-                            finalRight++;
-                            changed = true;
-                        }
-                        // Felfelé tágítás
-                        if (finalTop > 0 && IsEdgeRelevant(fastSearch, finalTop - 1, finalLeft, finalRight, false))
-                        {
-                            finalTop--;
-                            changed = true;
-                        }
-                        // Lefelé tágítás
-                        if (finalBottom < fastSearch.Height - 1 && IsEdgeRelevant(fastSearch, finalBottom + 1, finalLeft, finalRight, false))
-                        {
-                            finalBottom++;
-                            changed = true;
-                        }
+                        if (finalLeft > 0 && (finalRight - finalLeft) < maxWidth && IsEdgeRelevant(fastSearch, finalLeft - 1, finalTop, finalBottom, true, bestMatch.TargetColor))
+                        { finalLeft--; changed = true; }
+                        if (finalRight < fastSearch.Width - 1 && (finalRight - finalLeft) < maxWidth && IsEdgeRelevant(fastSearch, finalRight + 1, finalTop, finalBottom, true, bestMatch.TargetColor))
+                        { finalRight++; changed = true; }
+                        if (finalTop > 0 && (finalBottom - finalTop) < maxHeight && IsEdgeRelevant(fastSearch, finalTop - 1, finalLeft, finalRight, false, bestMatch.TargetColor))
+                        { finalTop--; changed = true; }
+                        if (finalBottom < fastSearch.Height - 1 && (finalBottom - finalTop) < maxHeight && IsEdgeRelevant(fastSearch, finalBottom + 1, finalLeft, finalRight, false, bestMatch.TargetColor))
+                        { finalBottom++; changed = true; }
                     }
 
-                    // A végső négyszög, ami már teljesen tartalmazza Zizgőt
+                    // Végleges befoglaló téglalap rögzítése
                     bestMatch.BoundingBox = new Rectangle(finalLeft, finalTop, finalRight - finalLeft, finalBottom - finalTop);
+
+                    // 5. KERÍTÉS (Fence) GENERÁLÁSA a dinamikus középpontból
+                    Point center = new Point(
+                        bestMatch.BoundingBox.X + bestMatch.BoundingBox.Width / 2,
+                        bestMatch.BoundingBox.Y + bestMatch.BoundingBox.Height / 2
+                    );
+
+                    bestMatch.FencePoints = GenerateZizgoFence(fastSearch, center, bestMatch.BoundingBox.Width, bestMatch.BoundingBox.Height, bestMatch.TargetColor);
                 }
 
                 fastTemplate.Unlock();
             }
             return bestMatch;
         }
-
-        // Segédfüggvény: Megnézi, hogy egy adott pixelsor/oszlop tartalmaz-e Zizgőhöz tartozó színt
-        private static unsafe bool IsEdgeRelevant(FastBitmap img, int coord, int start, int end, bool isVertical)
+        public static unsafe Point[] GenerateZizgoFence(FastBitmap img, Point center, int width, int height, Color targetColor)
         {
-            int matchCount = 0;
-            for (int i = start; i < end; i++)
+            int numRays = 72;
+            Point[] points = new Point[numRays];
+            double[] radii = new double[numRays];
+            int maxRadius = (int)(Math.Max(width, height) * 1.5);
+
+            for (int i = 0; i < numRays; i++)
             {
-                byte* p = isVertical ? img.GetPixelPointer(coord, i) : img.GetPixelPointer(i, coord);
+                double rad = (i * 5) * Math.PI / 180.0;
+                double dx = Math.Cos(rad), dy = Math.Sin(rad);
+                double bestR = 0;
+                int gap = 0;
 
-                // Zizgő jellegzetes kékes-zöld színe (B: ~160, G: ~200, R: ~100 környéke)
-                // A telítettséget nézzük (max-min > 15), hogy ne a szürke hátteret találja meg
-                int max = Math.Max(p[2], Math.Max(p[1], p[0]));
-                int min = Math.Min(p[2], Math.Min(p[1], p[0]));
-
-                if (max - min > 15 && p[1] > 100) // Ha van színe és a zöld csatorna erős
+                for (int r = 5; r < maxRadius; r++)
                 {
-                    matchCount++;
+                    int cx = center.X + (int)(dx * r), cy = center.Y + (int)(dy * r);
+                    if (cx < 0 || cx >= img.Width || cy < 0 || cy >= img.Height) break;
+
+                    byte* p = img.GetPixelPointer(cx, cy);
+                    int dR = p[2] - targetColor.R, dG = p[1] - targetColor.G, dB = p[0] - targetColor.B;
+                    double dist = Math.Sqrt(dR * dR + dG * dG + dB * dB);
+
+                    // ARC LOGIKA: Ha a pixel zöld, VAGY ha semleges (szem/száj: telítettség < 15)
+                    int sat = Math.Max(p[2], Math.Max(p[1], p[0])) - Math.Min(p[2], Math.Min(p[1], p[0]));
+                    bool isPlushColor = (dist < 55) || (sat < 15 && r < maxRadius * 0.6);
+
+                    if (isPlushColor)
+                    {
+                        bestR = r;
+                        gap = 0;
+                    }
+                    else if (++gap > 30) break;
                 }
+                radii[i] = bestR;
             }
 
-            // Ha a vizsgált él legalább 10%-a releváns színű, akkor tágítunk tovább
-            return matchCount > (end - start) * 0.1;
+            // 2. Simítás (Moving Average) tüskék ellen
+            for (int i = 0; i < numRays; i++)
+            {
+                double sum = 0; int count = 0;
+                for (int j = -2; j <= 2; j++)
+                {
+                    int idx = (i + j + numRays) % numRays;
+                    if (radii[idx] > 0) { sum += radii[idx]; count++; }
+                }
+                double finalR = (count > 0 ? sum / count : 0) + 5;
+                double rad = (i * (360.0 / numRays)) * Math.PI / 180.0;
+                points[i] = new Point(center.X + (int)(Math.Cos(rad) * finalR), center.Y + (int)(Math.Sin(rad) * finalR));
+            }
+            return points;
         }
-
         // Segédfüggvény a hiba kiszámításához (hogy ne ismételjük a kódot)
         private static unsafe double CalculateError(FastBitmap fastSearch, int x, int y, TemplatePixelOffset[] tPixels, double currentBest)
         {
@@ -199,6 +252,21 @@ namespace ZizgoKereso
                 if (error > currentBest) return double.MaxValue; // Early Exit
             }
             return error;
+        }
+
+        // TemplateMatcher.cs - Új metódus a kerítés pontjainak meghatározásához
+        private static unsafe bool IsEdgeRelevant(FastBitmap img, int coord, int start, int end, bool isVertical, Color targetColor)
+        {
+            int matchCount = 0;
+            for (int i = start; i < end; i++)
+            {
+                byte* p = isVertical ? img.GetPixelPointer(coord, i) : img.GetPixelPointer(i, coord);
+                int dR = p[2] - targetColor.R, dG = p[1] - targetColor.G, dB = p[0] - targetColor.B;
+                double dist = Math.Sqrt(dR * dR + dG * dG + dB * dB);
+
+                if (dist < 50) matchCount++;
+            }
+            return matchCount > (end - start) * 0.12;
         }
     }
 }
