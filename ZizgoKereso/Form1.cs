@@ -84,11 +84,25 @@ namespace ZizgoKereso
 
                 if (result.Score != double.MaxValue)
                 {
-                    // Vizuális visszajelzés (Bounding Box) rárajzolása a képre 
+                    // Vizuális visszajelzés rárajzolása a képre 
                     Bitmap resultBmp = ZizgoFinder.DrawBoundingBox(currentImage, result);
                     pictureBoxResult.Image = resultBmp;
 
-                    lblStatus.Text = $"Zizgõ megtalálva! Futási idõ: {sw.ElapsedMilliseconds} ms. Hibafaktor: {result.Score}";
+                    lblStatus.Text = $"Zizgõ megtalálva! Futási idõ: {sw.ElapsedMilliseconds} ms. Hiba: {Math.Round(result.Score, 2)}";
+
+                    // FELUGRÓ ABLAK MEGJELENÍTÉSE
+                    Form popup = new Form();
+                    popup.Text = "Zizgõ Megtalálva!";
+                    popup.Size = new Size(500, 500);
+                    popup.StartPosition = FormStartPosition.CenterParent;
+
+                    PictureBox pb = new PictureBox();
+                    pb.ImageLocation = result.CroppedImagePath; // Betölti a kivágott JPG-t
+                    pb.SizeMode = PictureBoxSizeMode.Zoom;
+                    pb.Dock = DockStyle.Fill;
+
+                    popup.Controls.Add(pb);
+                    popup.ShowDialog();
                 }
                 else
                 {
