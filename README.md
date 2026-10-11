@@ -1,8 +1,7 @@
-<p align="center">
-  <img src="./.github/assets/banner.svg" alt="Zizgő Kereső — Where's Zizgő? Finding one figure in a busy photo." width="100%" />
-</p>
+<h1 align="center">Zizgő Kereső</h1>
 
 <p align="center">
+  Where's Zizgő? Finding one figure in a busy photo.<br />
   <samp>PYTHON · OPENCV · PYQT6 · C# · WINFORMS · BLENDER</samp>
 </p>
 
@@ -71,5 +70,7 @@ In either one, load a search photo and point it at a template folder.
 <br />
 
 <p align="center">
+  <a href="https://github.com/Deatron01"><img src="https://raw.githubusercontent.com/Deatron01/Deatron01/main/assets/icon.png" width="56" alt="Dea" /></a><br />
+  <sub><i>Little chaos in a quiet mind.</i></sub><br />
   <sub><samp>MORE WORK AT <a href="https://github.com/Deatron01">GITHUB.COM/DEATRON01</a></samp></sub>
 </p>
