@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 60" width="800" height="60" fill="none">
+  <style>
+    .swash { stroke: #7d3de8; stroke-width: 3; stroke-linecap: round;
+             stroke-dasharray: 520; stroke-dashoffset: 520;
+             animation: draw 2.4s cubic-bezier(.6,0,.2,1) .3s forwards; }
+    .star  { fill: #9a6ae8; transform-box: fill-box; transform-origin: center;
+             animation: twinkle 3.2s ease-in-out infinite; }
+    .s2 { animation-delay: 1.1s; } .s3 { animation-delay: 2.2s; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @keyframes twinkle { 0%,100% { opacity: .25; transform: scale(.6) rotate(0deg); }
+                         50% { opacity: 1; transform: scale(1) rotate(45deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .swash { animation: none; stroke-dashoffset: 0; } .star { animation: none; opacity: .8; } }
+  </style>
+  <path class="swash" d="M150 38 C 260 30, 380 24, 470 26 S 610 30, 650 22"/>
+  <path class="star"    d="M110 30 l3 -9 l3 9 l9 3 l-9 3 l-3 9 l-3 -9 l-9 -3 z"/>
+  <path class="star s2" d="M688 14 l2 -6 l2 6 l6 2 l-6 2 l-2 6 l-2 -6 l-6 -2 z"/>
+  <path class="star s3" d="M712 40 l1.5 -4.5 l1.5 4.5 l4.5 1.5 l-4.5 1.5 l-1.5 4.5 l-1.5 -4.5 l-4.5 -1.5 z"/>
+</svg>
