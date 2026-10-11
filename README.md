@@ -6,8 +6,6 @@
   <samp>PYTHON · OPENCV · PYQT6 · C# · WINFORMS · BLENDER</samp>
 </p>
 
-<img src="./.github/assets/divider.svg" width="100%" alt="" />
-
 ### <samp>01 — WHAT IT IS</samp>
 
 "Where's Zizgő?" Given a busy photo, find one particular figure in it. A semester project
@@ -70,10 +68,8 @@ In either one, load a search photo and point it at a template folder.
 | `Zizgo_Eredmeny_*/` | Saved results, one folder per run |
 | `DP3HYC_Kepfeldolgozas_feleves.docx`, `HolVanZizgo.docx` | Project reports (Hungarian) |
 
-<img src="./.github/assets/divider.svg" width="100%" alt="" />
+<br />
 
 <p align="center">
-  <a href="https://github.com/Deatron01"><img src="https://raw.githubusercontent.com/Deatron01/Deatron01/main/assets/icon.png" width="56" alt="Dea" /></a><br />
-  <sub><i>Little chaos in a quiet mind.</i></sub><br />
   <sub><samp>MORE WORK AT <a href="https://github.com/Deatron01">GITHUB.COM/DEATRON01</a></samp></sub>
 </p>
